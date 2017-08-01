@@ -7,11 +7,11 @@ using System.IO;
 
 namespace BNKManager
 {
-    public class WwiseBank
+    public class WwiseBank : LoLSoundBank
     {
         public List<BankSection> bankSections = new List<BankSection>();
 
-        public WwiseBank(string fileLocation)
+        public WwiseBank(string fileLocation) : base(fileLocation)
         {
             using (BinaryReader br = new BinaryReader(File.Open(fileLocation, FileMode.Open)))
             {
@@ -19,7 +19,15 @@ namespace BNKManager
             }
         }
 
-        public void Save(string fileLocation)
+        public override void Save()
+        {
+            using (BinaryWriter bw = new BinaryWriter(File.Open(this.fileLocation, FileMode.Create)))
+            {
+                this.Write(bw);
+            }
+        }
+
+        public override void Save(string fileLocation)
         {
             using (BinaryWriter bw = new BinaryWriter(File.Open(fileLocation, FileMode.Create)))
             {
@@ -51,7 +59,7 @@ namespace BNKManager
                         this.bankSections.Add(new DATASection(br, sectionLength, (DIDXSection)this.GetSection("DIDX")));
                         break;
                     default:
-                        this.bankSections.Add(new BankSection(sectionName, br.ReadBytes((int)sectionLength)));
+                        this.bankSections.Add(new BankSection(sectionName, br.BaseStream.Position, br.ReadBytes((int)sectionLength)));
                         break;
                 }
             }
@@ -62,10 +70,24 @@ namespace BNKManager
             return this.bankSections.Find(x => x.sectionName == sectionName);
         }
 
+        public uint GetID()
+        {
+            BKHDSection headerSection = (BKHDSection)this.GetSection("BKHD");
+            if (headerSection == null)
+            {
+                return 0;
+            }
+            else
+            {
+                return headerSection.soundbankId;
+            }
+        }
+
         private void Write(BinaryWriter bw)
         {
             foreach (BankSection bnkSection in this.bankSections)
             {
+                bnkSection.dataStartOffset = bw.BaseStream.Position + 8;
                 bw.Write(bnkSection.GetBytes());
             }
         }

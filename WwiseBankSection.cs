@@ -10,6 +10,7 @@ namespace BNKManager
     public class BankSection
     {
         public string sectionName;
+        public long dataStartOffset;
         // Is null if section is known
         public byte[] sectionData;
 
@@ -36,8 +37,9 @@ namespace BNKManager
         }
 
 
-        public BankSection(string sectionName, byte[] sectionData)
+        public BankSection(string sectionName, long dataStartOffset, byte[] sectionData)
         {
+            this.dataStartOffset = dataStartOffset;
             this.sectionName = sectionName;
             this.sectionData = sectionData;
         }
@@ -51,7 +53,7 @@ namespace BNKManager
         public uint zero2;
         public byte[] unknown;
 
-        public BKHDSection(BinaryReader br, uint length) : base("BKHD", null)
+        public BKHDSection(BinaryReader br, uint length) : base("BKHD", br.BaseStream.Position, null)
         {
             this.soundbankVersion = br.ReadUInt32();
             this.soundbankId = br.ReadUInt32();
@@ -85,7 +87,7 @@ namespace BNKManager
     public class HIRCSection : BankSection
     {
         public List<WwiseObject> objects = new List<WwiseObject>();
-        public HIRCSection(BinaryReader br) : base("HIRC", null)
+        public HIRCSection(BinaryReader br) : base("HIRC", br.BaseStream.Position, null)
         {
             uint objectCount = br.ReadUInt32();
             for (uint i = 0; i < objectCount; i++)
@@ -134,7 +136,7 @@ namespace BNKManager
         uint unknown;
         List<ReferencedSoundbank> refSoundbanks = new List<ReferencedSoundbank>();
 
-        public STIDSection(BinaryReader br) : base("STID", null)
+        public STIDSection(BinaryReader br) : base("STID", br.BaseStream.Position, null)
         {
             this.unknown = br.ReadUInt32();
             uint soundbanksCount = br.ReadUInt32();
@@ -152,6 +154,7 @@ namespace BNKManager
                 using (BinaryWriter bw = new BinaryWriter(mStream))
                 {
                     bw.Write(this.unknown);
+                    bw.Write((uint)this.refSoundbanks.Count);
                     foreach (ReferencedSoundbank refSoundbank in this.refSoundbanks)
                     {
                         refSoundbank.Write(bw);
@@ -186,13 +189,18 @@ namespace BNKManager
     {
         public List<EmbeddedWEM> embeddedWEMFiles = new List<EmbeddedWEM>();
 
-        public DIDXSection(BinaryReader br, uint length) : base("DIDX", null)
+        public DIDXSection(BinaryReader br, uint length) : base("DIDX", br.BaseStream.Position, null)
         {
             uint filesCount = length / 12;
             for (uint i = 0; i < filesCount; i++)
             {
                 this.embeddedWEMFiles.Add(new EmbeddedWEM(br));
             }
+        }
+
+        public EmbeddedWEM GetEmbeddedWEM(uint fileID)
+        {
+            return this.embeddedWEMFiles.Find(x => x.ID == fileID);
         }
 
         public override byte[] GetBytes()
@@ -202,7 +210,6 @@ namespace BNKManager
             {
                 using (BinaryWriter bw = new BinaryWriter(mStream))
                 {
-                    bw.Write((uint)this.embeddedWEMFiles.Count);
                     foreach (EmbeddedWEM embeddedFile in embeddedWEMFiles)
                     {
                         embeddedFile.Write(bw);
@@ -238,9 +245,11 @@ namespace BNKManager
     public class DATASection : BankSection
     {
         public List<WEMFile> wemFiles = new List<WEMFile>();
+        public DIDXSection dataIndex;
 
-        public DATASection(BinaryReader br, uint length, DIDXSection dataIndex) : base("DATA", null)
+        public DATASection(BinaryReader br, uint length, DIDXSection dataIndex) : base("DATA", br.BaseStream.Position, null)
         {
+            this.dataIndex = dataIndex;
             long offset = br.BaseStream.Position;
             foreach (DIDXSection.EmbeddedWEM embWEM in dataIndex.embeddedWEMFiles)
             {
@@ -249,18 +258,28 @@ namespace BNKManager
             br.BaseStream.Seek(offset + length, SeekOrigin.Begin);
         }
 
+        //Use less memory
         public override byte[] GetBytes()
         {
-            byte[] sectionData = null;
+            byte[] sectionBytes = null;
             using (MemoryStream mStream = new MemoryStream())
             {
                 using (BinaryWriter bw = new BinaryWriter(mStream))
                 {
-                    //Needs to be done
+                    bw.Write(Encoding.ASCII.GetBytes(this.sectionName));
+                    bw.Write((int)0);
+                    foreach (WEMFile embWEM in this.wemFiles)
+                    {
+                        bw.Seek((int)embWEM.info.offset + 8, SeekOrigin.Begin);
+                        bw.Write(embWEM.data);
+                    }
+                    uint length = (uint)(bw.BaseStream.Position - 8);
+                    bw.BaseStream.Seek(4, SeekOrigin.Begin);
+                    bw.Write(length);
                 }
-                sectionData = mStream.ToArray();
+                sectionBytes = mStream.ToArray();
             }
-            return base.GetSectionBytes(sectionData);
+            return sectionBytes;
         }
 
         public class WEMFile

@@ -43,9 +43,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="LoLSoundBank.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="WPKSoundBank.cs" />
     <Compile Include="WwiseBank.cs" />
+    <Compile Include="LoLSoundBankManager.cs" />
     <Compile Include="WwiseBankObject.cs" />
     <Compile Include="WwiseBankSection.cs" />
   </ItemGroup>
